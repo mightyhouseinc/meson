@@ -135,8 +135,7 @@ class InstalledFile:
         self.platform = raw.get('platform', None)
         self.language = raw.get('language', 'c')  # type: str
 
-        version = raw.get('version', '')  # type: str
-        if version:
+        if version := raw.get('version', ''):
             self.version = version.split('.')  # type: T.List[str]
         else:
             # split on '' will return [''], we want an empty list though
@@ -145,8 +144,9 @@ class InstalledFile:
     def get_path(self, compiler: str, env: environment.Environment) -> T.Optional[Path]:
         p = Path(self.path)
         canonical_compiler = compiler
-        if ((compiler in ['clang-cl', 'intel-cl']) or
-                (env.machines.host.is_windows() and compiler in {'pgi', 'dmd', 'ldc'})):
+        if compiler in {'clang-cl', 'intel-cl'} or (
+            env.machines.host.is_windows() and compiler in {'pgi', 'dmd', 'ldc'}
+        ):
             canonical_compiler = 'msvc'
 
         python_suffix = python.info['suffix']
@@ -204,7 +204,7 @@ class InstalledFile:
                 if len(self.version) > 1:
                     return None
                 if self.version:
-                    p = p.with_name('{}-{}'.format(p.name, self.version[0]))
+                    p = p.with_name(f'{p.name}-{self.version[0]}')
                 return p.with_suffix('.dll')
 
             p = p.with_name(f'lib{p.name}')
@@ -216,12 +216,12 @@ class InstalledFile:
                 # pathlib.Path.with_suffix replaces, not appends
                 suffix = '.dylib'
                 if self.version:
-                    suffix = '.{}{}'.format(self.version[0], suffix)
+                    suffix = f'.{self.version[0]}{suffix}'
             else:
                 # pathlib.Path.with_suffix replaces, not appends
                 suffix = '.so'
                 if self.version:
-                    suffix = '{}.{}'.format(suffix, '.'.join(self.version))
+                    suffix = f"{suffix}.{'.'.join(self.version)}"
             return p.with_suffix(suffix)
         elif self.typ == 'exe':
             if 'mwcc' in canonical_compiler:
@@ -230,7 +230,7 @@ class InstalledFile:
                 return p.with_suffix('.exe')
         elif self.typ == 'pdb':
             if self.version:
-                p = p.with_name('{}-{}'.format(p.name, self.version[0]))
+                p = p.with_name(f'{p.name}-{self.version[0]}')
             return p.with_suffix('.pdb') if has_pdb else None
         elif self.typ in {'implib', 'implibempty'}:
             if env.machines.host.is_windows() and canonical_compiler == 'msvc':
@@ -253,15 +253,14 @@ class InstalledFile:
         p = self.get_path(compiler, env)
         if not p:
             return []
-        if self.typ == 'dir':
-            abs_p = installdir / p
-            if not abs_p.exists():
-                raise RuntimeError(f'{p} does not exist')
-            if not abs_p.is_dir():
-                raise RuntimeError(f'{p} is not a directory')
-            return [x.relative_to(installdir) for x in abs_p.rglob('*') if x.is_file() or x.is_symlink()]
-        else:
+        if self.typ != 'dir':
             return [p]
+        abs_p = installdir / p
+        if not abs_p.exists():
+            raise RuntimeError(f'{p} does not exist')
+        if not abs_p.is_dir():
+            raise RuntimeError(f'{p} is not a directory')
+        return [x.relative_to(installdir) for x in abs_p.rglob('*') if x.is_file() or x.is_symlink()]
 
 @functools.total_ordering
 class TestDef:
@@ -382,9 +381,9 @@ def platform_fix_name(fname: str, canonical_compiler: str, env: environment.Envi
             fname = re.sub(r'/([^/]*?)\?so$', r'/\1.dll', fname)
             return fname
         elif env.machines.host.is_darwin():
-            return fname[:-3] + '.dylib'
+            return f'{fname[:-3]}.dylib'
         else:
-            return fname[:-3] + '.so'
+            return f'{fname[:-3]}.so'
 
     return fname
 
@@ -446,7 +445,7 @@ def _run_ci_include(args: T.List[str]) -> str:
         data = Path(args[0]).read_text(errors='ignore', encoding='utf-8')
         return f'{header}\n{data}\n{footer}'
     except Exception:
-        return 'Failed to open {}'.format(args[0])
+        return f'Failed to open {args[0]}'
 
 ci_commands = {
     'ci_include': _run_ci_include
@@ -460,7 +459,7 @@ def run_ci_commands(raw_log: str) -> T.List[str]:
         cmd = shlex.split(l[11:])
         if not cmd or cmd[0] not in ci_commands:
             continue
-        res += ['CI COMMAND {}:\n{}\n'.format(cmd[0], ci_commands[cmd[0]](cmd[1:]))]
+        res += [f'CI COMMAND {cmd[0]}:\n{ci_commands[cmd[0]](cmd[1:])}\n']
     return res
 
 class OutputMatch:
@@ -493,10 +492,7 @@ def _compare_output(expected: T.List[T.Dict[str, str]], output: str, desc: str) 
             # (There should probably be a way to turn this off for more complex
             # cases which don't fit this)
             if mesonlib.is_windows():
-                if how != "re":
-                    sub = r'\\'
-                else:
-                    sub = r'\\\\'
+                sub = r'\\' if how != "re" else r'\\\\'
                 expected_line = re.sub(r'/(?=.*(WARNING|ERROR|DEPRECATION))', sub, expected_line)
 
             m = OutputMatch(how, expected_line, count)
@@ -585,7 +581,9 @@ def create_deterministic_builddir(test: TestDef, use_tmpdir: bool) -> str:
     src_dir = test.path.as_posix()
     if test.name:
         src_dir += test.name
-    rel_dirname = 'b ' + hashlib.sha256(src_dir.encode(errors='ignore')).hexdigest()[0:10]
+    rel_dirname = (
+        'b ' + hashlib.sha256(src_dir.encode(errors='ignore')).hexdigest()[:10]
+    )
     abs_pathname = os.path.join(tempfile.gettempdir() if use_tmpdir else os.getcwd(), rel_dirname)
     if os.path.exists(abs_pathname):
         mesonlib.windows_proof_rmtree(abs_pathname)
@@ -596,7 +594,7 @@ def format_parameter_file(file_basename: str, test: TestDef, test_build_dir: str
     confdata = ConfigurationData()
     confdata.values = {'MESON_TEST_ROOT': (str(test.path.absolute()), 'base directory of current test')}
 
-    template = test.path / (file_basename + '.in')
+    template = test.path / f'{file_basename}.in'
     destination = Path(test_build_dir) / file_basename
     mesonlib.do_conf_file(str(template), str(destination), confdata, 'meson')
 
@@ -798,9 +796,8 @@ def _skip_keys(test_def: T.Dict) -> T.Tuple[bool, bool]:
             if skip_os.startswith('!'):
                 if mesonenv.machines.host.system != skip_os[1:]:
                     skip_expected = True
-            else:
-                if mesonenv.machines.host.system == skip_os:
-                    skip_expected = True
+            elif mesonenv.machines.host.system == skip_os:
+                skip_expected = True
 
     # Skip if environment variable is present
     skip = False
@@ -907,8 +904,8 @@ def load_test_json(t: TestDef, stdout_mandatory: bool, skip_category: bool = Fal
             exclude = False
             opt_tuple = [(x[0], x[1]) for x in i]
             for j in matrix['exclude']:
-                ex_list = [(k, v) for k, v in j.items()]
-                if all([x in opt_tuple for x in ex_list]):
+                ex_list = list(j.items())
+                if all(x in opt_tuple for x in ex_list):
                     exclude = True
                     break
 
@@ -920,8 +917,8 @@ def load_test_json(t: TestDef, stdout_mandatory: bool, skip_category: bool = Fal
     for i in opt_list:
         name = ' '.join([f'{x[0]}={x[1]}' for x in i if x[1] is not None])
         opts = [f'-D{x[0]}={x[1]}' for x in i if x[1] is not None]
-        skip = any([x[2] for x in i])
-        skip_expected = any([x[3] for x in i])
+        skip = any(x[2] for x in i)
+        skip_expected = any(x[3] for x in i)
         test = TestDef(t.path, name, opts, skip or t.skip, skip_category)
         test.env.update(env)
         test.installed_files = installed
@@ -959,9 +956,7 @@ def have_d_compiler() -> bool:
         # Don't know why. Don't know how to fix. Skip in this case.
         cp = subprocess.run(['dmd', '--version'],
                             capture_output=True)
-        if cp.stdout == b'':
-            return False
-        return True
+        return cp.stdout != b''
     return False
 
 def have_objc_compiler(use_tmp: bool) -> bool:
@@ -997,9 +992,7 @@ def have_objcpp_compiler(use_tmp: bool) -> bool:
     return True
 
 def have_java() -> bool:
-    if shutil.which('javac') and shutil.which('java'):
-        return True
-    return False
+    return bool(shutil.which('javac') and shutil.which('java'))
 
 def skip_dont_care(t: TestDef) -> bool:
     # Everything is optional when not running on CI
@@ -1010,10 +1003,7 @@ def skip_dont_care(t: TestDef) -> bool:
     if not t.category.endswith('frameworks'):
         return True
 
-    if mesonlib.is_osx() and '6 gettext' in str(t.path):
-        return True
-
-    return False
+    return bool(mesonlib.is_osx() and '6 gettext' in str(t.path))
 
 def skip_csharp(backend: Backend) -> bool:
     if backend is not Backend.ninja:
@@ -1067,9 +1057,7 @@ def should_skip_rust(backend: Backend) -> bool:
 def should_skip_wayland() -> bool:
     if mesonlib.is_windows() or mesonlib.is_osx():
         return True
-    if not shutil.which('wayland-scanner'):
-        return True
-    return False
+    return not shutil.which('wayland-scanner')
 
 def detect_tests_to_run(only: T.Dict[str, T.List[str]], use_tmp: bool) -> T.List[T.Tuple[str, T.List[TestDef], bool]]:
     """
@@ -1143,8 +1131,19 @@ def detect_tests_to_run(only: T.Dict[str, T.List[str]], use_tmp: bool) -> T.List
             assert key in categories, f'key `{key}` is not a recognized category'
         all_tests = [t for t in all_tests if t.category in only.keys()]
 
-    gathered_tests = [(t.category, gather_tests(Path('test cases', t.subdir), t.stdout_mandatory, only[t.category], t.skip), t.skip) for t in all_tests]
-    return gathered_tests
+    return [
+        (
+            t.category,
+            gather_tests(
+                Path('test cases', t.subdir),
+                t.stdout_mandatory,
+                only[t.category],
+                t.skip,
+            ),
+            t.skip,
+        )
+        for t in all_tests
+    ]
 
 def run_tests(all_tests: T.List[T.Tuple[str, T.List[TestDef], bool]],
               log_name_base: str,
@@ -1152,7 +1151,7 @@ def run_tests(all_tests: T.List[T.Tuple[str, T.List[TestDef], bool]],
               extra_args: T.List[str],
               use_tmp: bool,
               num_workers: int) -> T.Tuple[int, int, int]:
-    txtname = log_name_base + '.txt'
+    txtname = f'{log_name_base}.txt'
     with open(txtname, 'w', encoding='utf-8', errors='ignore') as lf:
         return _run_tests(all_tests, log_name_base, failfast, extra_args, use_tmp, num_workers, lf)
 
@@ -1216,7 +1215,7 @@ def _run_tests(all_tests: T.List[T.Tuple[str, T.List[TestDef], bool]],
                num_workers: int,
                logfile: T.TextIO) -> T.Tuple[int, int, int]:
     global stop, host_c_compiler
-    xmlname = log_name_base + '.xml'
+    xmlname = f'{log_name_base}.xml'
     junit_root = ET.Element('testsuites')
     conf_time:  float = 0
     build_time: float = 0
@@ -1487,7 +1486,11 @@ def print_compilers(env: 'Environment', machine: MachineChoice) -> None:
     for lang in sorted(compilers.all_languages):
         try:
             comp = compiler_from_language(env, lang, machine)
-            details = '{:<10} {} {}'.format('[' + comp.get_id() + ']', ' '.join(comp.get_exelist()), comp.get_version_string())
+            details = '{:<10} {} {}'.format(
+                f'[{comp.get_id()}]',
+                ' '.join(comp.get_exelist()),
+                comp.get_version_string(),
+            )
         except mesonlib.MesonException:
             details = '[not found]'
         print(f'{lang:<7}: {details}')
@@ -1565,15 +1568,11 @@ if __name__ == '__main__':
         # This fails in some CI environments for unknown reasons.
         num_workers = multiprocessing.cpu_count()
     except Exception as e:
-        print('Could not determine number of CPUs due to the following reason:', str(e))
+        print('Could not determine number of CPUs due to the following reason:', e)
         print('Defaulting to using only two processes')
         num_workers = 2
 
-    if num_workers > 64:
-        # Too much parallelism seems to trigger a potential Python bug:
-        # https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=1004107
-        num_workers = 64
-
+    num_workers = min(num_workers, 64)
     parser = argparse.ArgumentParser(description="Run the test suite of Meson.")
     parser.add_argument('extra_args', nargs='*',
                         help='arguments that are passed directly to Meson (remember to have -- before these).')
@@ -1638,6 +1637,8 @@ if __name__ == '__main__':
         for k, g in itertools.groupby(dir_names, key=lambda x: x.split()[0]):
             tests = list(g)
             if len(tests) != 1:
-                print('WARNING: The {} suite contains duplicate "{}" tests: "{}"'.format(name, k, '", "'.join(tests)))
+                print(
+                    f"""WARNING: The {name} suite contains duplicate "{k}" tests: "{'", "'.join(tests)}\""""
+                )
     clear_transitive_files()
     raise SystemExit(failing_tests)

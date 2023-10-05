@@ -87,7 +87,7 @@ class GeneratorMD(GeneratorBase):
     def _gen_filename(self, file_id: str, *, extension: str = 'md') -> str:
         parts = file_id.split('.')
         assert parts[0] == 'root'
-        assert all([x for x in parts])
+        assert all(list(parts))
         parts[0] = _ROOT_BASENAME
         parts = [re.sub(r'[0-9]+_', '', x) for x in parts]
         return f'{"_".join(parts)}.{extension}'
@@ -150,9 +150,8 @@ class GeneratorMD(GeneratorBase):
         def render_type(typ: Type, in_code_block: bool = False) -> str:
             def data_type_to_str(dt: DataTypeInfo) -> str:
                 base = self._link_to_object(dt.data_type, in_code_block)
-                if dt.holds:
-                    return f'{base}[{render_type(dt.holds, in_code_block)}]'
-                return base
+                return f'{base}[{render_type(dt.holds, in_code_block)}]' if dt.holds else base
+
             assert typ.resolved
             return ' | '.join([data_type_to_str(x) for x in typ.resolved])
 
@@ -183,8 +182,8 @@ class GeneratorMD(GeneratorBase):
             max_type_len = 0
             max_name_len = 0
             if all_args:
-                max_type_len = max([len_stripped(render_type(x.type)) for x in all_args])
-                max_name_len = max([len(x.name) for x in all_args])
+                max_type_len = max(len_stripped(render_type(x.type)) for x in all_args)
+                max_name_len = max(len(x.name) for x in all_args)
 
             # Generate some common strings
             def prepare(arg: ArgBase, link: bool = True) -> T.Tuple[str, str, str, str]:
@@ -212,7 +211,7 @@ class GeneratorMD(GeneratorBase):
 
             # Abort if there are no kwargs
             if not func.kwargs:
-                return signature + ')'
+                return f'{signature})'
 
             # Only add this separator if there are any posargs
             if all_args:
@@ -220,16 +219,16 @@ class GeneratorMD(GeneratorBase):
 
             # Recalculate lengths for kwargs
             all_args = list(func.kwargs.values())
-            max_type_len = max([len_stripped(render_type(x.type)) for x in all_args])
-            max_name_len = max([len(x.name) for x in all_args])
+            max_type_len = max(len_stripped(render_type(x.type)) for x in all_args)
+            max_name_len = max(len(x.name) for x in all_args)
 
             for kwarg in self.sorted_and_filtered(list(func.kwargs.values())):
                 type_str, type_space, name_str, name_space = prepare(kwarg)
                 required = ' <i>[required]</i> ' if kwarg.required else '            '
-                required = required if any([x.required for x in func.kwargs.values()]) else ''
+                required = required if any(x.required for x in func.kwargs.values()) else ''
                 signature += f'  {name_str}{name_space} : {type_str}{type_space} {required} # {self.brief(kwarg)}\n'
 
-            return signature + ')'
+            return f'{signature})'
 
         def gen_arg_data(arg: T.Union[PosArg, Kwarg, VarArgs], *, optional: bool = False) -> T.Dict[str, PlaceholderTypes]:
             data: T.Dict[str, PlaceholderTypes] = {

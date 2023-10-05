@@ -287,7 +287,7 @@ class MesonApp:
             if self.options.profile:
                 fname = os.path.join(self.build_dir, 'meson-logs', 'profile-startup-modules.json')
                 mods = set(sys.modules.keys())
-                mesonmods = {mod for mod in mods if (mod+'.').startswith('mesonbuild.')}
+                mesonmods = {mod for mod in mods if f'{mod}.'.startswith('mesonbuild.')}
                 stdmods = sorted(mods - mesonmods)
                 data = {'stdlib': {'modules': stdmods, 'count': len(stdmods)}, 'meson': {'modules': sorted(mesonmods), 'count': len(mesonmods)}}
                 with open(fname, 'w', encoding='utf-8') as f:
@@ -298,7 +298,7 @@ class MesonApp:
         except Exception as e:
             mintro.write_meson_info_file(b, [e])
             if cdf is not None:
-                old_cdf = cdf + '.prev'
+                old_cdf = f'{cdf}.prev'
                 if os.path.exists(old_cdf):
                     os.replace(old_cdf, cdf)
                 else:

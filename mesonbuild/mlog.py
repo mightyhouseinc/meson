@@ -156,8 +156,7 @@ class _Logger:
         else:
             less = shutil.which('less')
             if not less and is_windows():
-                git = shutil.which('git')
-                if git:
+                if git := shutil.which('git'):
                     path = Path(git).parents[1] / 'usr' / 'bin'
                     less = shutil.which('less', path=str(path))
             if less:
@@ -224,7 +223,7 @@ class _Logger:
 
         raw = iostr.getvalue()
         if self.log_depth:
-            prepend = self.log_depth[-1] + '| ' if nested else ''
+            prepend = f'{self.log_depth[-1]}| ' if nested else ''
             lines = []
             for l in raw.split('\n'):
                 l = l.strip()
@@ -262,7 +261,7 @@ class _Logger:
         if not _in_ci:
             return
         args = [f'"{x}"' for x in args]  # Quote all args, just in case
-        self.debug('!meson_ci!/{} {}'.format(cmd, ' '.join(args)))
+        self.debug(f"!meson_ci!/{cmd} {' '.join(args)}")
 
     def cmd_ci_include(self, file: str) -> None:
         self._debug_log_cmd('ci_include', [file])
@@ -292,9 +291,8 @@ class _Logger:
         def to_str(x: TV_Loggable) -> str:
             if isinstance(x, str):
                 return x
-            if isinstance(x, AnsiDecorator):
-                return x.text
-            return str(x)
+            return x.text if isinstance(x, AnsiDecorator) else str(x)
+
         t = tuple(to_str(a) for a in args)
         if t in self.logged_once:
             return

@@ -51,8 +51,8 @@ class AstPrinter(AstVisitor):
 
     def append_padded(self, data: str, node: mparser.BaseNode) -> None:
         if self.result and self.result[-1] not in [' ', '\n']:
-            data = ' ' + data
-        self.append(data + ' ', node)
+            data = f' {data}'
+        self.append(f'{data} ', node)
 
     def newline(self) -> None:
         self.result += '\n'
@@ -79,12 +79,12 @@ class AstPrinter(AstVisitor):
 
     def visit_StringNode(self, node: mparser.StringNode) -> None:
         assert isinstance(node.value, str)
-        self.append("'" + self.escape(node.value) + "'", node)
+        self.append(f"'{self.escape(node.value)}'", node)
         node.lineno = self.curr_line or node.lineno
 
     def visit_FormatStringNode(self, node: mparser.FormatStringNode) -> None:
         assert isinstance(node.value, str)
-        self.append("f'" + node.value + "'", node)
+        self.append(f"f'{node.value}'", node)
         node.lineno = self.curr_line or node.lineno
 
     def visit_ContinueNode(self, node: mparser.ContinueNode) -> None:
@@ -152,24 +152,24 @@ class AstPrinter(AstVisitor):
     def visit_MethodNode(self, node: mparser.MethodNode) -> None:
         node.lineno = self.curr_line or node.lineno
         node.source_object.accept(self)
-        self.append('.' + node.name + '(', node)
+        self.append(f'.{node.name}(', node)
         node.args.accept(self)
         self.append(')', node)
 
     def visit_FunctionNode(self, node: mparser.FunctionNode) -> None:
         node.lineno = self.curr_line or node.lineno
-        self.append(node.func_name + '(', node)
+        self.append(f'{node.func_name}(', node)
         node.args.accept(self)
         self.append(')', node)
 
     def visit_AssignmentNode(self, node: mparser.AssignmentNode) -> None:
         node.lineno = self.curr_line or node.lineno
-        self.append(node.var_name + ' = ', node)
+        self.append(f'{node.var_name} = ', node)
         node.value.accept(self)
 
     def visit_PlusAssignmentNode(self, node: mparser.PlusAssignmentNode) -> None:
         node.lineno = self.curr_line or node.lineno
-        self.append(node.var_name + ' += ', node)
+        self.append(f'{node.var_name} += ', node)
         node.value.accept(self)
 
     def visit_ForeachClauseNode(self, node: mparser.ForeachClauseNode) -> None:
@@ -186,7 +186,7 @@ class AstPrinter(AstVisitor):
         node.lineno = self.curr_line or node.lineno
         prefix = ''
         for i in node.ifs:
-            self.append_padded(prefix + 'if', node)
+            self.append_padded(f'{prefix}if', node)
             prefix = 'el'
             i.accept(self)
         if not isinstance(node.elseblock, mparser.EmptyNode):

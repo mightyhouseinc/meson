@@ -124,7 +124,9 @@ class CommandLineParser:
         # FIXME: Cannot have hidden subparser:
         # https://bugs.python.org/issue22848
         if help_msg == argparse.SUPPRESS:
-            p = argparse.ArgumentParser(prog='meson ' + name, formatter_class=self.formatter)
+            p = argparse.ArgumentParser(
+                prog=f'meson {name}', formatter_class=self.formatter
+            )
             self.hidden_commands.append(name)
         else:
             p = self.subparsers.add_parser(name, help=help_msg, aliases=aliases, formatter_class=self.formatter)
@@ -214,7 +216,7 @@ def run_script_command(script_name, script_args):
     module_name = script_map.get(script_name, script_name)
 
     try:
-        module = importlib.import_module('mesonbuild.scripts.' + module_name)
+        module = importlib.import_module(f'mesonbuild.scripts.{module_name}')
     except ModuleNotFoundError as e:
         mlog.exception(e)
         return 1
@@ -271,16 +273,15 @@ def run(original_args, mainfile):
     # Special handling of internal commands called from backends, they don't
     # need to go through argparse.
     if len(args) >= 2 and args[0] == '--internal':
-        if args[1] == 'regenerate':
-            set_meson_command(mainfile)
-            from . import msetup
-            try:
-                return msetup.run(['--reconfigure'] + args[2:])
-            except Exception as e:
-                return errorhandler(e, 'setup')
-        else:
+        if args[1] != 'regenerate':
             return run_script_command(args[1], args[2:])
 
+        set_meson_command(mainfile)
+        from . import msetup
+        try:
+            return msetup.run(['--reconfigure'] + args[2:])
+        except Exception as e:
+            return errorhandler(e, 'setup')
     set_meson_command(mainfile)
     return CommandLineParser().run(args)
 

@@ -136,7 +136,9 @@ class UserStringOption(UserOption[str]):
 
     def validate_value(self, value: T.Any) -> str:
         if not isinstance(value, str):
-            raise MesonException('Value "%s" for string option is not a string.' % str(value))
+            raise MesonException(
+                f'Value "{str(value)}" for string option is not a string.'
+            )
         return value
 
 class UserBooleanOption(UserOption[bool]):
@@ -157,7 +159,7 @@ class UserBooleanOption(UserOption[bool]):
             return True
         if value.lower() == 'false':
             return False
-        raise MesonException('Value %s is not boolean (true or false).' % value)
+        raise MesonException(f'Value {value} is not boolean (true or false).')
 
 class UserIntegerOption(UserOption[int]):
     def __init__(self, description: str, value: T.Any, yielding: bool = DEFAULT_YIELDING,
@@ -167,9 +169,9 @@ class UserIntegerOption(UserOption[int]):
         self.max_value = max_value
         c: T.List[str] = []
         if min_value is not None:
-            c.append('>=' + str(min_value))
+            c.append(f'>={str(min_value)}')
         if max_value is not None:
-            c.append('<=' + str(max_value))
+            c.append(f'<={str(max_value)}')
         choices = ', '.join(c)
         super().__init__(description, choices, yielding, deprecated)
         self.set_value(default_value)
@@ -189,7 +191,9 @@ class UserIntegerOption(UserOption[int]):
         try:
             return int(valuestring)
         except ValueError:
-            raise MesonException('Value string "%s" is not convertible to an integer.' % valuestring)
+            raise MesonException(
+                f'Value string "{valuestring}" is not convertible to an integer.'
+            )
 
 class OctalInt(int):
     # NinjaBackend.get_user_option_args uses str() to converts it to a command line option
@@ -205,9 +209,7 @@ class UserUmaskOption(UserIntegerOption, UserOption[T.Union[str, OctalInt]]):
         self.choices = ['preserve', '0000-0777']
 
     def printable_value(self) -> str:
-        if self.value == 'preserve':
-            return self.value
-        return format(self.value, '04o')
+        return self.value if self.value == 'preserve' else format(self.value, '04o')
 
     def validate_value(self, value: T.Any) -> T.Union[str, OctalInt]:
         if value == 'preserve':
@@ -241,9 +243,9 @@ class UserComboOption(UserOption[str]):
             else:
                 _type = 'string'
             optionsstring = ', '.join([f'"{item}"' for item in self.choices])
-            raise MesonException('Value "{}" (of type "{}") for combo option "{}" is not one of the choices.'
-                                 ' Possible choices are (as string): {}.'.format(
-                                     value, _type, self.description, optionsstring))
+            raise MesonException(
+                f'Value "{value}" (of type "{_type}") for combo option "{self.description}" is not one of the choices. Possible choices are (as string): {optionsstring}.'
+            )
         return value
 
 class UserArrayOption(UserOption[T.List[str]]):
@@ -263,7 +265,7 @@ class UserArrayOption(UserOption[T.List[str]]):
         # string, but for defining options in meson_options.txt the format
         # should match that of a combo
         if not user_input and isinstance(value, str) and not value.startswith('['):
-            raise MesonException('Value does not define an array: ' + value)
+            raise MesonException(f'Value does not define an array: {value}')
 
         if isinstance(value, str):
             if value.startswith('['):
@@ -273,11 +275,10 @@ class UserArrayOption(UserOption[T.List[str]]):
                     raise MesonException(f'malformed option {value}')
             elif value == '':
                 newvalue = []
+            elif self.split_args:
+                newvalue = split_args(value)
             else:
-                if self.split_args:
-                    newvalue = split_args(value)
-                else:
-                    newvalue = [v.strip() for v in value.split(',')]
+                newvalue = [v.strip() for v in value.split(',')]
         elif isinstance(value, list):
             newvalue = value
         else:
@@ -289,16 +290,16 @@ class UserArrayOption(UserOption[T.List[str]]):
 
         if not self.allow_dups and len(set(newvalue)) != len(newvalue):
             msg = 'Duplicated values in array option is deprecated. ' \
-                  'This will become a hard error in the future.'
+                      'This will become a hard error in the future.'
             mlog.deprecation(msg)
         for i in newvalue:
             if not isinstance(i, str):
                 raise MesonException(f'String array element "{newvalue!s}" is not a string.')
         if self.choices:
-            bad = [x for x in newvalue if x not in self.choices]
-            if bad:
-                raise MesonException('Options "{}" are not in allowed choices: "{}"'.format(
-                    ', '.join(bad), ', '.join(self.choices)))
+            if bad := [x for x in newvalue if x not in self.choices]:
+                raise MesonException(
+                    f"""Options "{', '.join(bad)}" are not in allowed choices: "{', '.join(self.choices)}\""""
+                )
         return newvalue
 
     def extend_value(self, value: T.Union[str, T.List[str]]) -> None:
@@ -336,9 +337,7 @@ class DependencyCacheType(enum.Enum):
         # As more types gain search overrides they'll need to be added here
         if dep.type_name == 'pkgconfig':
             return cls.PKG_CONFIG
-        if dep.type_name == 'cmake':
-            return cls.CMAKE
-        return cls.OTHER
+        return cls.CMAKE if dep.type_name == 'cmake' else cls.OTHER
 
 
 class DependencySubCache:
@@ -511,11 +510,7 @@ class CoreData:
     def __load_config_files(options: argparse.Namespace, scratch_dir: str, ftype: str) -> T.List[str]:
         # Need to try and make the passed filenames absolute because when the
         # files are parsed later we'll have chdir()d.
-        if ftype == 'cross':
-            filenames = options.cross_file
-        else:
-            filenames = options.native_file
-
+        filenames = options.cross_file if ftype == 'cross' else options.native_file
         if not filenames:
             return []
 
@@ -581,11 +576,7 @@ class CoreData:
             # string is of type 'C:\' because 'C:' is not an absolute path.
             if len(prefix) == 3 and prefix[1] == ':':
                 pass
-            # If prefix is a single character, preserve it since it is
-            # the root directory.
-            elif len(prefix) == 1:
-                pass
-            else:
+            elif len(prefix) != 1:
                 prefix = prefix[:-1]
         return prefix
 
@@ -655,18 +646,14 @@ class CoreData:
     def get_option(self, key: OptionKey) -> T.Union[T.List[str], str, int, bool, WrapMode]:
         try:
             v = self.options[key].value
-            if key.name == 'wrap_mode':
-                return WrapMode[v]
-            return v
+            return WrapMode[v] if key.name == 'wrap_mode' else v
         except KeyError:
             pass
 
         try:
             v = self.options[key.as_root()]
             if v.yielding:
-                if key.name == 'wrap_mode':
-                    return WrapMode[v.value]
-                return v.value
+                return WrapMode[v.value] if key.name == 'wrap_mode' else v.value
         except KeyError:
             pass
 
@@ -1081,7 +1068,7 @@ def update_cmd_line_file(build_dir: str, options: argparse.Namespace):
         config.write(f)
 
 def format_cmd_line_options(options: argparse.Namespace) -> str:
-    cmdline = ['-D{}={}'.format(str(k), v) for k, v in options.cmd_line_options.items()]
+    cmdline = [f'-D{str(k)}={v}' for k, v in options.cmd_line_options.items()]
     if options.cross_file:
         cmdline += [f'--cross-file={f}' for f in options.cross_file]
     if options.native_file:
@@ -1101,8 +1088,8 @@ def load(build_dir: str) -> CoreData:
 
 def save(obj: CoreData, build_dir: str) -> str:
     filename = os.path.join(build_dir, 'meson-private', 'coredata.dat')
-    prev_filename = filename + '.prev'
-    tempfilename = filename + '~'
+    prev_filename = f'{filename}.prev'
+    tempfilename = f'{filename}~'
     if major_versions_differ(obj.version, version):
         raise MesonException('Fatal version mismatch corruption.')
     if os.path.exists(filename):
@@ -1191,9 +1178,7 @@ class BuiltinOption(T.Generic[_T, _U]):
         # If the type is a boolean, the presence of the argument in --foo form
         # is to enable it. Disabling happens by using -Dfoo=false, which is
         # parsed under `args.projectoptions` and does not hit this codepath.
-        if isinstance(self.default, bool):
-            return 'store_true'
-        return None
+        return 'store_true' if isinstance(self.default, bool) else None
 
     def _argparse_choices(self) -> T.Any:
         if self.opt_type is UserBooleanOption:
@@ -1225,7 +1210,7 @@ class BuiltinOption(T.Generic[_T, _U]):
         b = self._argparse_action()
         h = self.description
         if not b:
-            h = '{} (default: {}).'.format(h.rstrip('.'), self.prefixed_default(name))
+            h = f"{h.rstrip('.')} (default: {self.prefixed_default(name)})."
         else:
             kwargs['action'] = b
         if c and not b:

@@ -171,11 +171,7 @@ class Not(IR):
 
 def _parse(ast: _LEX_STREAM_AH, filename: str) -> IR:
     (token, value), n_stream = next(ast)
-    if n_stream is not None:
-        ntoken, _ = n_stream
-    else:
-        ntoken, _ = (None, None)
-
+    ntoken, _ = n_stream if n_stream is not None else (None, None)
     stream: T.List[_LEX_TOKEN]
     if token is TokenType.IDENTIFIER:
         if ntoken is TokenType.EQUAL:

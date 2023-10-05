@@ -124,19 +124,18 @@ def _process_install_tag(install_tag: T.Optional[T.List[T.Optional[str]]],
                          num_outputs: int) -> T.List[T.Optional[str]]:
     _install_tag: T.List[T.Optional[str]]
     if not install_tag:
-        _install_tag = [None] * num_outputs
+        return [None] * num_outputs
     elif len(install_tag) == 1:
-        _install_tag = install_tag * num_outputs
+        return install_tag * num_outputs
     else:
-        _install_tag = install_tag
-    return _install_tag
+        return install_tag
 
 
 @lru_cache(maxsize=None)
 def get_target_macos_dylib_install_name(ld) -> str:
     name = ['@rpath/', ld.prefix, ld.name]
     if ld.soversion is not None:
-        name.append('.' + ld.soversion)
+        name.append(f'.{ld.soversion}')
     name.append('.dylib')
     return ''.join(name)
 
@@ -347,9 +346,7 @@ class Build:
     def get_project_args(self, compiler: 'Compiler', project: str, for_machine: 'MachineChoice') -> T.List[str]:
         d = self.projects_args[for_machine]
         args = d.get(project)
-        if not args:
-            return []
-        return args.get(compiler.get_language(), [])
+        return [] if not args else args.get(compiler.get_language(), [])
 
     def get_global_link_args(self, compiler: 'Compiler', for_machine: 'MachineChoice') -> T.List[str]:
         d = self.global_link_args[for_machine]
@@ -359,10 +356,7 @@ class Build:
         d = self.projects_link_args[for_machine]
 
         link_args = d.get(project)
-        if not link_args:
-            return []
-
-        return link_args.get(compiler.get_language(), [])
+        return [] if not link_args else link_args.get(compiler.get_language(), [])
 
 @dataclass(eq=False)
 class IncludeDirs(HoldableObject):
@@ -429,12 +423,7 @@ class ExtractedObjects(HoldableObject):
         # Merge sources and generated sources
         sources = list(sources)
         for gensrc in generated_sources:
-            for s in gensrc.get_outputs():
-                # We cannot know the path where this source will be generated,
-                # but all we need here is the file extension to determine the
-                # compiler.
-                sources.append(s)
-
+            sources.extend(iter(gensrc.get_outputs()))
         # Filter out headers and all non-source files
         return [s for s in sources if is_source(s)]
 
@@ -500,10 +489,7 @@ class StructuredSources(HoldableObject):
         """
         for files in self.sources.values():
             for f in files:
-                if isinstance(f, File):
-                    if f.is_built:
-                        return True
-                else:
+                if isinstance(f, File) and f.is_built or not isinstance(f, File):
                     return True
         return False
 
@@ -629,7 +615,7 @@ class Target(HoldableObject, metaclass=abc.ABCMeta):
         if subdir:
             subdir_part = Target._get_id_hash(subdir)
             # preserve myid for better debuggability
-            return subdir_part + '@@' + my_id
+            return f'{subdir_part}@@{my_id}'
         return my_id
 
     def get_id(self) -> str:
@@ -816,12 +802,10 @@ class BuildTarget(Target):
         self.check_unknown_kwargs_int(kwargs, self.known_kwargs)
 
     def check_unknown_kwargs_int(self, kwargs, known_kwargs):
-        unknowns = []
-        for k in kwargs:
-            if k not in known_kwargs:
-                unknowns.append(k)
-        if len(unknowns) > 0:
-            mlog.warning('Unknown keyword argument(s) in target {}: {}.'.format(self.name, ', '.join(unknowns)))
+        if unknowns := [k for k in kwargs if k not in known_kwargs]:
+            mlog.warning(
+                f"Unknown keyword argument(s) in target {self.name}: {', '.join(unknowns)}."
+            )
 
     def process_objectlist(self, objects):
         assert isinstance(objects, list)
@@ -829,8 +813,7 @@ class BuildTarget(Target):
             if isinstance(s, (str, File, ExtractedObjects)):
                 self.objects.append(s)
             elif isinstance(s, (CustomTarget, CustomTargetIndex, GeneratedList)):
-                non_objects = [o for o in s.get_outputs() if not is_object(o)]
-                if non_objects:
+                if non_objects := [o for o in s.get_outputs() if not is_object(o)]:
                     raise InvalidArguments(f'Generated file {non_objects[0]} in the \'objects\' kwarg is not an object.')
                 self.generated.append(s)
             else:
@@ -1004,13 +987,15 @@ class BuildTarget(Target):
         """
         sources = listify(sources)
         for s in sources:
-            if isinstance(s, File):
+            if (
+                isinstance(s, File)
+                or not isinstance(s, str)
+                and hasattr(s, 'get_outputs')
+            ):
                 self.link_depends.append(s)
             elif isinstance(s, str):
                 self.link_depends.append(
                     File.from_source_file(self.environment.source_dir, self.subdir, s))
-            elif hasattr(s, 'get_outputs'):
-                self.link_depends.append(s)
             else:
                 raise InvalidArguments(
                     'Link_depends arguments must be strings, Files, '

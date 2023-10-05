@@ -234,7 +234,7 @@ def restore_selinux_contexts() -> None:
     '''
     try:
         subprocess.check_call(['selinuxenabled'])
-    except (FileNotFoundError, NotADirectoryError, OSError, PermissionError, subprocess.CalledProcessError):
+    except (OSError, subprocess.CalledProcessError):
         # If we don't have selinux or selinuxenabled returned 1, failure
         # is ignored quietly.
         return
@@ -247,18 +247,20 @@ def restore_selinux_contexts() -> None:
         # If the list of files is empty, do not try to call restorecon.
         return
 
-    proc, out, err = Popen_safe(['restorecon', '-F', '-f-', '-0'], ('\0'.join(f for f in selinux_updates) + '\0'))
+    proc, out, err = Popen_safe(
+        ['restorecon', '-F', '-f-', '-0'], '\0'.join(selinux_updates) + '\0'
+    )
     if proc.returncode != 0:
         print('Failed to restore SELinux context of installed files...',
               'Standard output:', out,
               'Standard error:', err, sep='\n')
 
 def get_destdir_path(destdir: str, fullprefix: str, path: str) -> str:
-    if os.path.isabs(path):
-        output = destdir_join(destdir, path)
-    else:
-        output = os.path.join(fullprefix, path)
-    return output
+    return (
+        destdir_join(destdir, path)
+        if os.path.isabs(path)
+        else os.path.join(fullprefix, path)
+    )
 
 
 def check_for_stampfile(fname: str) -> str:
@@ -269,7 +271,7 @@ def check_for_stampfile(fname: str) -> str:
     if fname.endswith('.so') or fname.endswith('.dll'):
         if os.stat(fname).st_size == 0:
             (base, suffix) = os.path.splitext(fname)
-            files = glob(base + '-*' + suffix)
+            files = glob(f'{base}-*{suffix}')
             if len(files) > 1:
                 print("Stale dynamic library files in build dir. Can't install.")
                 sys.exit(1)
@@ -278,7 +280,7 @@ def check_for_stampfile(fname: str) -> str:
     elif fname.endswith('.a') or fname.endswith('.lib'):
         if os.stat(fname).st_size == 0:
             (base, suffix) = os.path.splitext(fname)
-            files = glob(base + '-*' + '.rlib')
+            files = glob(f'{base}-*.rlib')
             if len(files) > 1:
                 print("Stale static library files in build dir. Can't install.")
                 sys.exit(1)
@@ -361,18 +363,14 @@ class Installer:
         return 0, '', ''
 
     def run_exe(self, exe: ExecutableSerialisation, extra_env: T.Optional[T.Dict[str, str]] = None) -> int:
-        if (not self.dry_run) or exe.dry_run:
-            return run_exe(exe, extra_env)
-        return 0
+        return run_exe(exe, extra_env) if (not self.dry_run) or exe.dry_run else 0
 
     def should_install(self, d: T.Union[TargetInstallData, InstallEmptyDir,
                                         InstallDataBase, InstallSymlinkData,
                                         ExecutableSerialisation]) -> bool:
         if d.subproject and (d.subproject in self.skip_subprojects or '*' in self.skip_subprojects):
             return False
-        if self.tags and d.tag not in self.tags:
-            return False
-        return True
+        return not self.tags or d.tag in self.tags
 
     def log(self, msg: str) -> None:
         if not self.options.quiet:
@@ -554,8 +552,9 @@ class Installer:
                 if not self.did_install_something:
                     self.log('Nothing to install.')
                 if not self.options.quiet and self.preserved_file_count > 0:
-                    self.log('Preserved {} unchanged files, see {} for the full list'
-                             .format(self.preserved_file_count, os.path.normpath(self.lf.name)))
+                    self.log(
+                        f'Preserved {self.preserved_file_count} unchanged files, see {os.path.normpath(self.lf.name)} for the full list'
+                    )
         except PermissionError:
             if is_windows() or destdir != '' or not os.isatty(sys.stdout.fileno()) or not os.isatty(sys.stderr.fileno()):
                 # can't elevate to root except in an interactive unix environment *and* when not doing a destdir install
@@ -684,13 +683,22 @@ class Installer:
             if not self.should_install(i):
                 continue
 
-            if i.installdir_map is not None:
-                mapp = i.installdir_map
-            else:
-                mapp = {'prefix': d.prefix}
+            mapp = {'prefix': d.prefix} if i.installdir_map is None else i.installdir_map
             localenv = env.copy()
-            localenv.update({'MESON_INSTALL_'+k.upper(): os.path.join(d.prefix, v) for k, v in mapp.items()})
-            localenv.update({'MESON_INSTALL_DESTDIR_'+k.upper(): get_destdir_path(destdir, fullprefix, v) for k, v in mapp.items()})
+            localenv.update(
+                {
+                    f'MESON_INSTALL_{k.upper()}': os.path.join(d.prefix, v)
+                    for k, v in mapp.items()
+                }
+            )
+            localenv.update(
+                {
+                    f'MESON_INSTALL_DESTDIR_{k.upper()}': get_destdir_path(
+                        destdir, fullprefix, v
+                    )
+                    for k, v in mapp.items()
+                }
+            )
 
             name = ' '.join(i.cmd_args)
             if i.skip_if_destdir and destdir:
@@ -710,21 +718,16 @@ class Installer:
 
     def install_targets(self, d: InstallData, dm: DirMaker, destdir: str, fullprefix: str) -> None:
         for t in d.targets:
-            # In AIX, we archive our shared libraries.  When we install any package in AIX we need to
-            # install the archive in which the shared library exists. The below code does the same.
-            # We change the .so files having lt_version or so_version to archive file install.
             if is_aix():
                 if '.so' in t.fname:
                     t.fname = re.sub('[.][a]([.]?([0-9]+))*([.]?([a-z]+))*', '.a', t.fname.replace('.so', '.a'))
             if not self.should_install(t):
                 continue
             if not os.path.exists(t.fname):
-                # For example, import libraries of shared modules are optional
-                if t.optional:
-                    self.log(f'File {t.fname!r} not found, skipping')
-                    continue
-                else:
+                if not t.optional:
                     raise MesonException(f'File {t.fname!r} could not be found')
+                self.log(f'File {t.fname!r} not found, skipping')
+                continue
             file_copied = False # not set when a directory is copied
             fname = check_for_stampfile(t.fname)
             outdir = get_destdir_path(destdir, fullprefix, t.outdir)
@@ -740,15 +743,15 @@ class Installer:
                 file_copied = self.do_copyfile(fname, outname, makedirs=(dm, outdir))
                 if should_strip and d.strip_bin is not None:
                     if fname.endswith('.jar'):
-                        self.log('Not stripping jar target: {}'.format(os.path.basename(fname)))
+                        self.log(f'Not stripping jar target: {os.path.basename(fname)}')
                         continue
                     self.do_strip(d.strip_bin, fname, outname)
                 if fname.endswith('.js'):
                     # Emscripten outputs js files and optionally a wasm file.
                     # If one was generated, install it as well.
-                    wasm_source = os.path.splitext(fname)[0] + '.wasm'
+                    wasm_source = f'{os.path.splitext(fname)[0]}.wasm'
                     if os.path.exists(wasm_source):
-                        wasm_output = os.path.splitext(outname)[0] + '.wasm'
+                        wasm_output = f'{os.path.splitext(outname)[0]}.wasm'
                         file_copied = self.do_copyfile(wasm_source, wasm_output)
             elif os.path.isdir(fname):
                 fname = os.path.join(d.build_dir, fname.rstrip('/'))
@@ -763,9 +766,7 @@ class Installer:
                     self.fix_rpath(outname, t.rpath_dirs_to_remove, install_rpath, final_path,
                                    install_name_mappings, verbose=False)
                 except SystemExit as e:
-                    if isinstance(e.code, int) and e.code == 0:
-                        pass
-                    else:
+                    if not isinstance(e.code, int) or e.code != 0:
                         raise
                 # file mode needs to be set last, after strip/depfixer editing
                 self.set_mode(outname, install_mode, d.install_umask)
@@ -784,49 +785,49 @@ def rebuild_all(wd: str, backend: str) -> bool:
         return False
 
     def drop_privileges() -> T.Tuple[T.Optional[EnvironOrDict], T.Optional[T.Callable[[], None]]]:
-        if not is_windows() and os.geteuid() == 0:
-            import pwd
-            env = os.environ.copy()
+        if is_windows() or os.geteuid() != 0:
+            return None, None
 
-            if os.environ.get('SUDO_USER') is not None:
-                orig_user = env.pop('SUDO_USER')
-                orig_uid = env.pop('SUDO_UID', 0)
-                orig_gid = env.pop('SUDO_GID', 0)
-                try:
-                    homedir = pwd.getpwuid(int(orig_uid)).pw_dir
-                except KeyError:
-                    # `sudo chroot` leaves behind stale variable and builds as root without a user
-                    return None, None
-            elif os.environ.get('DOAS_USER') is not None:
-                orig_user = env.pop('DOAS_USER')
-                try:
-                    pwdata = pwd.getpwnam(orig_user)
-                except KeyError:
-                    # `doas chroot` leaves behind stale variable and builds as root without a user
-                    return None, None
-                orig_uid = pwdata.pw_uid
-                orig_gid = pwdata.pw_gid
-                homedir = pwdata.pw_dir
-            else:
+        import pwd
+        env = os.environ.copy()
+
+        if os.environ.get('SUDO_USER') is not None:
+            orig_user = env.pop('SUDO_USER')
+            orig_uid = env.pop('SUDO_UID', 0)
+            orig_gid = env.pop('SUDO_GID', 0)
+            try:
+                homedir = pwd.getpwuid(int(orig_uid)).pw_dir
+            except KeyError:
+                # `sudo chroot` leaves behind stale variable and builds as root without a user
                 return None, None
-
-            if os.stat(os.path.join(wd, 'build.ninja')).st_uid != int(orig_uid):
-                # the entire build process is running with sudo, we can't drop privileges
+        elif os.environ.get('DOAS_USER') is not None:
+            orig_user = env.pop('DOAS_USER')
+            try:
+                pwdata = pwd.getpwnam(orig_user)
+            except KeyError:
+                # `doas chroot` leaves behind stale variable and builds as root without a user
                 return None, None
-
-            env['USER'] = orig_user
-            env['HOME'] = homedir
-
-            def wrapped() -> None:
-                print(f'Dropping privileges to {orig_user!r} before running ninja...')
-                if orig_gid is not None:
-                    os.setgid(int(orig_gid))
-                if orig_uid is not None:
-                    os.setuid(int(orig_uid))
-
-            return env, wrapped
+            orig_uid = pwdata.pw_uid
+            orig_gid = pwdata.pw_gid
+            homedir = pwdata.pw_dir
         else:
             return None, None
+
+        if os.stat(os.path.join(wd, 'build.ninja')).st_uid != int(orig_uid):
+            # the entire build process is running with sudo, we can't drop privileges
+            return None, None
+
+        env['USER'] = orig_user
+        env['HOME'] = homedir
+
+        def wrapped() -> None:
+            print(f'Dropping privileges to {orig_user!r} before running ninja...')
+            if orig_gid is not None:
+                os.setgid(int(orig_gid))
+            if orig_uid is not None:
+                os.setuid(int(orig_uid))
+
+        return env, wrapped
 
     env, preexec_fn = drop_privileges()
     ret = subprocess.run(ninja + ['-C', wd], env=env, preexec_fn=preexec_fn).returncode

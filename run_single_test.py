@@ -58,9 +58,7 @@ def main() -> None:
         dir_ = path.parent.stem
         # FIXME: warning tets might not be handled correctly still…
         if dir_.startswith(('failing', 'warning')):
-            if ' ' in dir_:
-                return dir_.split(' ')[1]
-            return 'meson'
+            return dir_.split(' ')[1] if ' ' in dir_ else 'meson'
         return ''
 
     results = [run_test(t, t.args + args.extra_args, should_fail(t.path), args.use_tmpdir) for t in tests]

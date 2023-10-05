@@ -67,7 +67,7 @@ class _Resolver:
                 continue
             if c == '[':
                 stack += 1
-            if c == ']':
+            elif c == ']':
                 stack -= 1
             types[-1] += c
         types = [x.strip() for x in types]

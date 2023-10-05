@@ -119,9 +119,8 @@ def main() -> int:
                 to_check.append(f)
             elif any(f.startswith(i) for i in modules):
                 to_check.append(f)
-            else:
-                if not opts.quiet:
-                    print(f'skipping {f!r} because it is not yet typed')
+            elif not opts.quiet:
+                print(f'skipping {f!r} because it is not yet typed')
     else:
         to_check.extend(modules)
 

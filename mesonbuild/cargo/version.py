@@ -87,9 +87,9 @@ def convert(cargo_ver: str) -> T.List[str]:
 
             # If there is no minimum, don't emit one
             if set(min_) != {'0'}:
-                out.append('>= {}'.format('.'.join(min_)))
+                out.append(f">= {'.'.join(min_)}")
             if set(max_) != {'0'}:
-                out.append('< {}'.format('.'.join(max_)))
+                out.append(f"< {'.'.join(max_)}")
             else:
                 out.append('< 1')
 

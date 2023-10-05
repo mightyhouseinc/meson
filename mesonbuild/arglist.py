@@ -235,10 +235,7 @@ class CompilerArgs(T.MutableSequence[str]):
         # needed by static libraries that are provided by object files or
         # shared libraries.
         self.flush_pre_post()
-        if copy:
-            new = self.copy()
-        else:
-            new = self
+        new = self.copy() if copy else self
         return self.compiler.unix_args_to_native(new._container)
 
     def append_direct(self, arg: str) -> None:

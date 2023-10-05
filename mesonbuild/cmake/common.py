@@ -113,8 +113,7 @@ def _flags_to_list(raw: str) -> T.List[str]:
         else:
             curr += i
     res += [curr]
-    res = [r for r in res if len(r) > 0]
-    return res
+    return [r for r in res if len(r) > 0]
 
 def cmake_get_generator_args(env: 'Environment') -> T.List[str]:
     backend_name = env.coredata.get_option(OptionKey('backend'))
@@ -138,14 +137,16 @@ def cmake_defines_to_args(raw: T.List[T.Dict[str, TYPE_var]], permissive: bool =
                 val_str = 'ON' if val else 'OFF'
                 res += [f'-D{key}={val_str}']
             else:
-                raise MesonException('Type "{}" of "{}" is not supported as for a CMake define value'.format(type(val).__name__, key))
+                raise MesonException(
+                    f'Type "{type(val).__name__}" of "{key}" is not supported as for a CMake define value'
+                )
 
     return res
 
 # TODO: this function will become obsolete once the `cmake_args` kwarg is dropped
 def check_cmake_args(args: T.List[str]) -> T.List[str]:
     res: T.List[str] = []
-    dis = ['-D' + x for x in blacklist_cmake_defs]
+    dis = [f'-D{x}' for x in blacklist_cmake_defs]
     assert dis  # Ensure that dis is not empty.
     for i in args:
         if any(i.startswith(x) for x in dis):
@@ -299,9 +300,7 @@ class SingleTargetOptions:
         return res
 
     def get_compile_args(self, lang: str, initial: T.List[str]) -> T.List[str]:
-        if lang in self.lang_args:
-            return initial + self.lang_args[lang]
-        return initial
+        return initial + self.lang_args[lang] if lang in self.lang_args else initial
 
     def get_link_args(self, initial: T.List[str]) -> T.List[str]:
         return initial + self.link_args

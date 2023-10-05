@@ -191,7 +191,7 @@ class Conf:
     def add_section(self, section: str) -> None:
         self.print_margin = 0
         self._add_line('', '', '', '')
-        self._add_line(mlog.normal_yellow(section + ':'), '', '', '')
+        self._add_line(mlog.normal_yellow(f'{section}:'), '', '', '')
         self.print_margin = 2
 
     def print_options(self, title: str, options: 'coredata.KeyedOptionDictType') -> None:
@@ -272,7 +272,7 @@ class Conf:
         for subproject in sorted(self.all_subprojects):
             if subproject == '':
                 continue
-            self.add_section('Subproject ' + subproject)
+            self.add_section(f'Subproject {subproject}')
             if subproject in host_core_options:
                 self.print_options('Core options', host_core_options[subproject])
             if subproject in build_core_options and show_build_options:

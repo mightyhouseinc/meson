@@ -59,8 +59,7 @@ def get_env(b: build.Build, dump_fmt: T.Optional[str]) -> T.Tuple[T.Dict[str, st
     extra_env.set('MESON_DEVENV', ['1'])
     extra_env.set('MESON_PROJECT_NAME', [b.project_name])
 
-    sysroot = b.environment.properties[MachineChoice.HOST].get_sys_root()
-    if sysroot:
+    if sysroot := b.environment.properties[MachineChoice.HOST].get_sys_root():
         extra_env.set('QEMU_LD_PREFIX', [sysroot])
 
     env = {} if dump_fmt else os.environ.copy()
@@ -88,9 +87,11 @@ def bash_completion_files(b: build.Build, install_data: 'InstallData') -> T.List
         completionsdir = dep.get_variable(pkgconfig='completionsdir', pkgconfig_define=['datadir', datadir_abs])
         assert isinstance(completionsdir, str), 'for mypy'
         completionsdir_path = Path(completionsdir)
-        for f in install_data.data:
-            if completionsdir_path in Path(f.install_path).parents:
-                result.append(f.path)
+        result.extend(
+            f.path
+            for f in install_data.data
+            if completionsdir_path in Path(f.install_path).parents
+        )
     return result
 
 def add_gdb_auto_load(autoload_path: Path, gdb_helper: str, fname: Path) -> None:
@@ -176,8 +177,7 @@ def run(options: argparse.Namespace) -> int:
 
     if b.environment.need_exe_wrapper():
         m = 'An executable wrapper could be required'
-        exe_wrapper = b.environment.get_exe_wrapper()
-        if exe_wrapper:
+        if exe_wrapper := b.environment.get_exe_wrapper():
             cmd = ' '.join(exe_wrapper.get_command())
             m += f': {cmd}'
         mlog.log(m)

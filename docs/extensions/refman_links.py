@@ -36,7 +36,7 @@ class RefmanLinksExtension(Extension):
 
         # Add Arguments with `group.add_argument(...)`
         group.add_argument(
-            f'--refman-data-file',
+            '--refman-data-file',
             help="JSON file with the mappings to replace",
             default=None,
         )
@@ -79,9 +79,9 @@ class RefmanLinksExtension(Extension):
                 text = text[1:]
             elif in_code_block:
                 if m.group(3) != '(':
-                    text = text + '()'
+                    text = f'{text}()'
             else:
-                text = text + '()'
+                text = f'{text}()'
             if not in_code_block:
                 text = f'<code>{text}</code>'
             link = f'<a href="{self._data[obj_id]}"><ins>{text}</ins></a>'

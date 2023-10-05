@@ -58,13 +58,10 @@ class CMakeFileAPI:
         if not self.reply_dir.is_dir():
             raise CMakeException('No response from the CMake file API')
 
-        root = None
         reg_index = re.compile(r'^index-.*\.json$')
-        for i in self.reply_dir.iterdir():
-            if reg_index.match(i.name):
-                root = i
-                break
-
+        root = next(
+            (i for i in self.reply_dir.iterdir() if reg_index.match(i.name)), None
+        )
         if not root:
             raise CMakeException('Failed to find the CMake file API index')
 
@@ -285,10 +282,11 @@ class CMakeFileAPI:
                 data[idx] = self._strip_data(i)
 
         elif isinstance(data, dict):
-            new = {}
-            for key, val in data.items():
-                if key not in STRIP_KEYS:
-                    new[key] = self._strip_data(val)
+            new = {
+                key: self._strip_data(val)
+                for key, val in data.items()
+                if key not in STRIP_KEYS
+            }
             data = new
 
         return data

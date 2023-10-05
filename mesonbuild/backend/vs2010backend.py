@@ -94,11 +94,13 @@ def split_o_flags_args(args: T.List[str]) -> T.List[str]:
         if 'b' in flags:
             o_flags.append(arg)
         else:
-            o_flags += ['/O' + f for f in flags]
+            o_flags += [f'/O{f}' for f in flags]
     return o_flags
 
 def generate_guid_from_path(path, path_type) -> str:
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, 'meson-vs-' + path_type + ':' + str(path))).upper()
+    return str(
+        uuid.uuid5(uuid.NAMESPACE_URL, f'meson-vs-{path_type}:{str(path)}')
+    ).upper()
 
 def detect_microsoft_gdk(platform: str) -> bool:
     return re.match(r'Gaming\.(Desktop|Xbox.XboxOne|Xbox.Scarlett)\.x64', platform, re.IGNORECASE)
@@ -242,23 +244,17 @@ class Vs2010Backend(backends.Backend):
         if target_machine in {'64', 'x86_64'}:
             # amd64 or x86_64
             target_system = self.interpreter.builtin['target_machine'].system_method(None, None)
-            if detect_microsoft_gdk(target_system):
-                self.platform = target_system
-            else:
-                self.platform = 'x64'
+            self.platform = target_system if detect_microsoft_gdk(target_system) else 'x64'
         elif target_machine == 'x86':
             # x86
             self.platform = 'Win32'
         elif target_machine in {'aarch64', 'arm64'}:
             target_cpu = self.interpreter.builtin['target_machine'].cpu_method(None, None)
-            if target_cpu == 'arm64ec':
-                self.platform = 'arm64ec'
-            else:
-                self.platform = 'arm64'
+            self.platform = 'arm64ec' if target_cpu == 'arm64ec' else 'arm64'
         elif 'arm' in target_machine.lower():
             self.platform = 'ARM'
         else:
-            raise MesonException('Unsupported Visual Studio platform: ' + target_machine)
+            raise MesonException(f'Unsupported Visual Studio platform: {target_machine}')
 
         build_machine = self.interpreter.builtin['build_machine'].cpu_family_method(None, None)
         if build_machine in {'64', 'x86_64'}:
@@ -269,14 +265,11 @@ class Vs2010Backend(backends.Backend):
             self.build_platform = 'Win32'
         elif build_machine in {'aarch64', 'arm64'}:
             target_cpu = self.interpreter.builtin['build_machine'].cpu_method(None, None)
-            if target_cpu == 'arm64ec':
-                self.build_platform = 'arm64ec'
-            else:
-                self.build_platform = 'arm64'
+            self.build_platform = 'arm64ec' if target_cpu == 'arm64ec' else 'arm64'
         elif 'arm' in build_machine.lower():
             self.build_platform = 'ARM'
         else:
-            raise MesonException('Unsupported Visual Studio platform: ' + build_machine)
+            raise MesonException(f'Unsupported Visual Studio platform: {build_machine}')
 
         self.buildtype = self.environment.coredata.get_option(OptionKey('buildtype'))
         self.optimization = self.environment.coredata.get_option(OptionKey('optimization'))
@@ -285,7 +278,9 @@ class Vs2010Backend(backends.Backend):
             self.sanitize = self.environment.coredata.get_option(OptionKey('b_sanitize'))
         except MesonException:
             self.sanitize = 'none'
-        sln_filename = os.path.join(self.environment.get_build_dir(), self.build.project_name + '.sln')
+        sln_filename = os.path.join(
+            self.environment.get_build_dir(), f'{self.build.project_name}.sln'
+        )
         projlist = self.generate_projects(vslite_ctx)
         self.gen_testproj()
         self.gen_installproj()
@@ -308,8 +303,7 @@ class Vs2010Backend(backends.Backend):
 
         # Use vcvarsall.bat if we found it.
         if 'VCINSTALLDIR' in os.environ:
-            vs_version = os.environ['VisualStudioVersion'] \
-                if 'VisualStudioVersion' in os.environ else None
+            vs_version = os.environ.get('VisualStudioVersion', None)
             relative_path = 'Auxiliary\\Build\\' if vs_version is not None and vs_version >= '15.0' else ''
             script_path = os.environ['VCINSTALLDIR'] + relative_path + 'vcvarsall.bat'
             if os.path.exists(script_path):
@@ -319,22 +313,26 @@ class Vs2010Backend(backends.Backend):
                 else:
                     target_arch = os.environ.get('Platform', 'x86')
                     host_arch = target_arch
-                arch = host_arch + '_' + target_arch if host_arch != target_arch else target_arch
+                arch = (
+                    f'{host_arch}_{target_arch}'
+                    if host_arch != target_arch
+                    else target_arch
+                )
                 return f'"{script_path}" {arch}'
 
         # Otherwise try the VS2017 Developer Command Prompt.
         if 'VS150COMNTOOLS' in os.environ and has_arch_values:
             script_path = os.environ['VS150COMNTOOLS'] + 'VsDevCmd.bat'
             if os.path.exists(script_path):
-                return '"%s" -arch=%s -host_arch=%s' % \
-                    (script_path, os.environ['VSCMD_ARG_TGT_ARCH'], os.environ['VSCMD_ARG_HOST_ARCH'])
+                return f""""{script_path}" -arch={os.environ['VSCMD_ARG_TGT_ARCH']} -host_arch={os.environ['VSCMD_ARG_HOST_ARCH']}"""
         return ''
 
     def get_obj_target_deps(self, obj_list):
-        result = {}
-        for o in obj_list:
-            if isinstance(o, build.ExtractedObjects):
-                result[o.target.get_id()] = o.target
+        result = {
+            o.target.get_id(): o.target
+            for o in obj_list
+            if isinstance(o, build.ExtractedObjects)
+        }
         return result.items()
 
     def get_target_deps(self, t: T.Dict[T.Any, build.Target], recursive=False):
@@ -364,10 +362,7 @@ class Vs2010Backend(backends.Backend):
                 for ldep in target.link_depends:
                     if isinstance(ldep, build.CustomTargetIndex):
                         all_deps[ldep.get_id()] = ldep.target
-                    elif isinstance(ldep, File):
-                        # Already built, no target references needed
-                        pass
-                    else:
+                    elif not isinstance(ldep, File):
                         all_deps[ldep.get_id()] = ldep
 
                 for obj_id, objdep in self.get_obj_target_deps(target.objects):
@@ -422,7 +417,7 @@ class Vs2010Backend(backends.Backend):
     def generate_solution(self, sln_filename: str, projlist: T.List[Project]) -> None:
         default_projlist = self.get_build_by_default_targets()
         default_projlist.update(self.get_testlike_targets())
-        sln_filename_tmp = sln_filename + '~'
+        sln_filename_tmp = f'{sln_filename}~'
         # Note using the utf-8 BOM requires the blank line, otherwise Visual Studio Version Selector fails.
         # Without the BOM, VSVS fails if there is a blank line.
         with open(sln_filename_tmp, 'w', encoding='utf-8-sig') as ofile:
@@ -511,8 +506,8 @@ class Vs2010Backend(backends.Backend):
                     # FIXME:  Would be slightly nicer if we could enable building of just one top level target/project,
                     # but not sure how to identify that.
                     if not self.gen_lite and \
-                       p[0] in default_projlist and \
-                       not isinstance(self.build.targets[p[0]], build.RunTarget):
+                           p[0] in default_projlist and \
+                           not isinstance(self.build.targets[p[0]], build.RunTarget):
                         ofile.write('\t\t{%s}.%s|%s.Build.0 = %s|%s\n' %
                                     (p[2], buildtype, self.platform,
                                      buildtype, config_platform))
@@ -553,13 +548,14 @@ class Vs2010Backend(backends.Backend):
                 self.get_target_dir(target)
             )
             outdir.mkdir(exist_ok=True, parents=True)
-            fname = name + '.vcxproj'
+            fname = f'{name}.vcxproj'
             target_dir = PurePath(self.get_target_dir(target))
             relname = target_dir / fname
             projfile_path = outdir / fname
             proj_uuid = self.environment.coredata.target_guids[name]
-            generated = self.gen_vcxproj(target, str(projfile_path), proj_uuid, vslite_ctx)
-            if generated:
+            if generated := self.gen_vcxproj(
+                target, str(projfile_path), proj_uuid, vslite_ctx
+            ):
                 projlist.append((name, relname, proj_uuid, target.for_machine))
 
         # Put the startup project first in the project list
@@ -583,9 +579,7 @@ class Vs2010Backend(backends.Backend):
                 lang = self.lang_from_source_file(i)
                 if lang not in languages:
                     languages.append(lang)
-            elif self.environment.is_library(i):
-                pass
-            else:
+            elif not self.environment.is_library(i):
                 # Everything that is not an object or source file is considered a header.
                 headers.append(i)
         return sources, headers, objects, languages
@@ -598,7 +592,7 @@ class Vs2010Backend(backends.Backend):
         return os.sep.join(['..'] * len(directories))
 
     def quote_arguments(self, arr):
-        return ['"%s"' % i for i in arr]
+        return [f'"{i}"' for i in arr]
 
     def add_project_reference(self, root: ET.Element, include: str, projid: str, link_outputs: bool = False) -> None:
         ig = ET.SubElement(root, 'ItemGroup')
@@ -617,14 +611,18 @@ class Vs2010Backend(backends.Backend):
                 # This dependency was already handled manually.
                 continue
             relpath = self.get_target_dir_relative_to(dep, target)
-            vcxproj = os.path.join(relpath, dep.get_id() + '.vcxproj')
+            vcxproj = os.path.join(relpath, f'{dep.get_id()}.vcxproj')
             tid = self.environment.coredata.target_guids[dep.get_id()]
             self.add_project_reference(root, vcxproj, tid)
 
     def create_basic_project_filters(self) -> ET.Element:
-        root = ET.Element('Project', {'ToolsVersion': '4.0',
-                                      'xmlns': 'http://schemas.microsoft.com/developer/msbuild/2003'})
-        return root
+        return ET.Element(
+            'Project',
+            {
+                'ToolsVersion': '4.0',
+                'xmlns': 'http://schemas.microsoft.com/developer/msbuild/2003',
+            },
+        )
 
     def create_basic_project(self, target_name, *,
                              temp_dir,
@@ -642,8 +640,11 @@ class Vs2010Backend(backends.Backend):
 
         multi_config_buildtype_list = coredata.get_genvs_default_buildtype_list() if self.gen_lite else [self.buildtype]
         for buildtype in multi_config_buildtype_list:
-            prjconf = ET.SubElement(confitems, 'ProjectConfiguration',
-                                    {'Include': buildtype + '|' + target_platform})
+            prjconf = ET.SubElement(
+                confitems,
+                'ProjectConfiguration',
+                {'Include': f'{buildtype}|{target_platform}'},
+            )
             ET.SubElement(prjconf, 'Configuration').text = buildtype
             ET.SubElement(prjconf, 'Platform').text = target_platform
 
@@ -652,7 +653,7 @@ class Vs2010Backend(backends.Backend):
         guidelem = ET.SubElement(globalgroup, 'ProjectGuid')
         guidelem.text = '{%s}' % guid
         kw = ET.SubElement(globalgroup, 'Keyword')
-        kw.text = self.platform + 'Proj'
+        kw.text = f'{self.platform}Proj'
 
         ET.SubElement(root, 'Import', Project=r'$(VCTargetsPath)\Microsoft.Cpp.Default.props')
 
@@ -812,7 +813,7 @@ class Vs2010Backend(backends.Backend):
         pch.text = 'Use'
         header = self.add_pch_files(pch_sources, lang, inc_cl)
         pch_include = ET.SubElement(inc_cl, 'ForcedIncludeFiles')
-        pch_include.text = header + ';%(ForcedIncludeFiles)'
+        pch_include.text = f'{header};%(ForcedIncludeFiles)'
 
     def add_pch_files(self, pch_sources, lang, inc_cl):
         header = os.path.basename(pch_sources[lang][0])
@@ -841,9 +842,7 @@ class Vs2010Backend(backends.Backend):
         # Remove arguments that have a top level XML entry so
         # they are not used twice.
         # FIXME add args as needed.
-        if entry[1:].startswith('fsanitize'):
-            return True
-        return entry[1:].startswith('M')
+        return True if entry[1:].startswith('fsanitize') else entry[1:].startswith('M')
 
     def add_additional_options(self, lang, parent_node, file_args):
         args = []
@@ -872,7 +871,7 @@ class Vs2010Backend(backends.Backend):
         # defs/dirs/opts that are set for the nominal 'primary' src type.
         ext = src.split('.')[-1]
         lang = compilers.compilers.SUFFIX_TO_LANG.get(ext, None)
-        if lang in defs_paths_opts_per_lang_and_buildtype.keys():
+        if lang in defs_paths_opts_per_lang_and_buildtype:
             # This is a non-primary src type for which can't simply reference the project's nmake fields;
             # we must laboriously fill in the fields for all buildtypes.
             for buildtype in coredata.get_genvs_default_buildtype_list():
@@ -961,10 +960,7 @@ class Vs2010Backend(backends.Backend):
             list_path = filter_path.split('\\')
             new_filter_path = ''
             for path in list_path:
-                if new_filter_path:
-                    new_filter_path = new_filter_path + '\\' + path
-                else:
-                    new_filter_path = path
+                new_filter_path = new_filter_path + '\\' + path if new_filter_path else path
                 list_filters_path.add(new_filter_path)
             # Create a new filter node for the current file added
             ET.SubElement(filter_inc_cl, 'Filter').text = filter_path
@@ -1015,7 +1011,7 @@ class Vs2010Backend(backends.Backend):
         raise MesonException('Could not find a C or C++ compiler. MSVC can only build C/C++ projects.')
 
     def _prettyprint_vcxproj_xml(self, tree: ET.ElementTree, ofname: str) -> None:
-        ofname_tmp = ofname + '~'
+        ofname_tmp = f'{ofname}~'
         tree.write(ofname_tmp, encoding='utf-8', xml_declaration=True)
 
         # ElementTree cannot do pretty-printing, so do it manually

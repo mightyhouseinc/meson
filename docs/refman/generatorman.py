@@ -133,16 +133,16 @@ class GeneratorMan(GeneratorBase):
                         if inList:
                             page.nl()
                             inList = False
-                    elif line[0:2] in ["- ", "* "]:
+                    elif line[:2] in ["- ", "* "]:
                         if inList:
                             page.nl()
                             page.br()
                         else:
                             inList = True
 
-                        page.inline(line.strip() + " ")
+                        page.inline(f"{line.strip()} ")
                     elif inList and line[0] == " ":
-                        page.inline(line.strip() + " ")
+                        page.inline(f"{line.strip()} ")
                     else:
                         inList = False
                         page.line(line)
@@ -169,18 +169,18 @@ class GeneratorMan(GeneratorBase):
             args += [arg.name for arg in f.posargs]
 
         if f.varargs:
-            args += [f.varargs.name + "..."]
+            args += [f"{f.varargs.name}..."]
 
         if f.optargs:
             args += [f"[{arg.name}]" for arg in f.optargs]
 
         for kwarg in self.sorted_and_filtered(list(f.kwargs.values())):
-            kw = kwarg.name + ":"
+            kw = f"{kwarg.name}:"
             if kwarg.default:
-                kw += " " + ManPage.bold(kwarg.default)
+                kw += f" {ManPage.bold(kwarg.default)}"
             args += [kw]
 
-        ret = ManPage.italic(f.returns.raw) + " "
+        ret = f"{ManPage.italic(f.returns.raw)} "
 
         prefix = f"{ret}{self.function_name(f, o)}("
         sig = ", ".join(args)
@@ -191,7 +191,7 @@ class GeneratorMan(GeneratorBase):
             page.br()
             page.indent()
             for arg in args:
-                page.line(arg + ",")
+                page.line(f"{arg},")
                 page.br()
             page.unindent()
             page.line(suffix)
@@ -230,7 +230,7 @@ class GeneratorMan(GeneratorBase):
         if isinstance(arg, (PosArg, Kwarg)) and arg.default:
             info += [f"default: {arg.default}"]
         if isinstance(arg, VarArgs):
-            mn = 0 if arg.min_varargs < 0 else arg.min_varargs
+            mn = max(arg.min_varargs, 0)
             mx = "N" if arg.max_varargs < 0 else arg.max_varargs
             info += [f"{mn}...{mx} times"]
 
@@ -273,15 +273,14 @@ class GeneratorMan(GeneratorBase):
         page.unindent()
 
     def generate_function(self, page: ManPage, f: Function, obj: Object = None) -> None:
-        page.subsection(self.function_name(f, obj) + "()")
+        page.subsection(f"{self.function_name(f, obj)}()")
         page.indent(0)
 
         page.line(ManPage.bold("SYNOPSIS"))
         page.indent()
         self.generate_function_signature(page, f, obj)
 
-        info = self.base_info(f)
-        if info:
+        if info := self.base_info(f):
             page.nl()
             page.line(", ".join(info))
         page.unindent()
@@ -311,8 +310,7 @@ class GeneratorMan(GeneratorBase):
         page.subsection(obj.name)
         page.indent(2)
 
-        info = self.base_info(obj)
-        if info:
+        if info := self.base_info(obj):
             page.line(", ".join(info))
             page.br()
 
@@ -320,13 +318,11 @@ class GeneratorMan(GeneratorBase):
             page.line(ManPage.bold("extends: ") + obj.extends)
             page.br()
 
-        ret = [x.name for x in self.sorted_and_filtered(obj.returned_by)]
-        if ret:
+        if ret := [x.name for x in self.sorted_and_filtered(obj.returned_by)]:
             page.line(ManPage.bold("returned_by: ") + ", ".join(ret))
             page.br()
 
-        ext = [x.name for x in self.sorted_and_filtered(obj.extended_by)]
-        if ext:
+        if ext := [x.name for x in self.sorted_and_filtered(obj.extended_by)]:
             page.line(ManPage.bold("extended_by: ") + ", ".join(ext))
             page.br()
 

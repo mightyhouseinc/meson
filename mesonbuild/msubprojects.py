@@ -87,8 +87,8 @@ class Logger:
         max_len = shutil.get_terminal_size().columns - len(line)
         running = ', '.join(self.running_tasks)
         if len(running) + 3 > max_len:
-            running = running[:max_len - 6] + '...'
-        line = line + f' ({running})'
+            running = f'{running[:max_len - 6]}...'
+        line = f'{line} ({running})'
         print(self.should_erase_line, line, sep='', end='\r')
         self.should_erase_line = '\x1b[K'
 
@@ -339,7 +339,7 @@ class Runner:
             self.log(mlog.red(str(e)))
             return False
         if self.wrap_resolver.is_git_full_commit_id(revision) and \
-                quiet_git(['rev-parse', '--verify', revision + '^{commit}'], self.repo_dir)[0]:
+                    quiet_git(['rev-parse', '--verify', revision + '^{commit}'], self.repo_dir)[0]:
             # The revision we need is both a commit and available. So we do not
             # need to fetch it because it cannot be updated.  Instead, trick
             # git into setting FETCH_HEAD just in case, from the local commit.
@@ -361,27 +361,24 @@ class Runner:
                 self.log(mlog.red(str(e)))
                 return False
 
-        if branch == '':
-            # We are currently in detached mode
-            if options.reset:
-                success = self.git_checkout_and_reset(revision)
-            else:
-                success = self.git_checkout_and_rebase(revision)
-        elif branch == revision:
-            # We are in the same branch. A reset could still be needed in the case
-            # a force push happened on remote repository.
-            if options.reset:
-                success = self.git_reset(revision)
-            else:
-                success = self.git_rebase(revision)
+        if branch != '' and branch == revision and options.reset:
+            success = self.git_reset(revision)
+        elif (
+            branch != ''
+            and branch == revision
+            or branch != ''
+            and not options.reset
+        ):
+            success = self.git_rebase(revision)
+        elif branch != '':
+            success = self.git_checkout_and_reset(revision)
         else:
-            # We are in another branch, either the user created their own branch and
-            # we should rebase it, or revision changed in the wrap file and we need
-            # to checkout the new branch.
-            if options.reset:
-                success = self.git_checkout_and_reset(revision)
-            else:
-                success = self.git_rebase(revision)
+            # We are currently in detached mode
+            success = (
+                self.git_checkout_and_reset(revision)
+                if options.reset
+                else self.git_checkout_and_rebase(revision)
+            )
         if success:
             self.update_git_done()
         return success
@@ -397,10 +394,9 @@ class Runner:
             # because otherwise you can't develop without
             # a working net connection.
             subprocess.call(['hg', 'pull'], cwd=self.repo_dir)
-        else:
-            if subprocess.call(['hg', 'checkout', revno], cwd=self.repo_dir) != 0:
-                subprocess.check_call(['hg', 'pull'], cwd=self.repo_dir)
-                subprocess.check_call(['hg', 'checkout', revno], cwd=self.repo_dir)
+        elif subprocess.call(['hg', 'checkout', revno], cwd=self.repo_dir) != 0:
+            subprocess.check_call(['hg', 'pull'], cwd=self.repo_dir)
+            subprocess.check_call(['hg', 'checkout', revno], cwd=self.repo_dir)
         return True
 
     def update_svn(self) -> bool:
@@ -481,7 +477,7 @@ class Runner:
         cmd = [options.command] + options.args
         p, out, _ = Popen_safe(cmd, stderr=subprocess.STDOUT, cwd=self.repo_dir)
         if p.returncode != 0:
-            err_message = "Command '{}' returned non-zero exit status {}.".format(" ".join(cmd), p.returncode)
+            err_message = f"""Command '{" ".join(cmd)}' returned non-zero exit status {p.returncode}."""
             self.log('  -> ', mlog.red(err_message))
             self.log(out, end='')
             return False
@@ -717,8 +713,7 @@ def run(options: 'Arguments') -> int:
     executor = ThreadPoolExecutor(options.num_processes)
     if types:
         wraps = [wrap for wrap in wraps if wrap.type in types]
-    pre_func = getattr(options, 'pre_func', None)
-    if pre_func:
+    if pre_func := getattr(options, 'pre_func', None):
         pre_func(options)
     logger = Logger(len(wraps))
     for wrap in wraps:
@@ -729,12 +724,13 @@ def run(options: 'Arguments') -> int:
         task_names.append(wrap.name)
     results = loop.run_until_complete(asyncio.gather(*tasks))
     logger.flush()
-    post_func = getattr(options, 'post_func', None)
-    if post_func:
+    if post_func := getattr(options, 'post_func', None):
         post_func(options)
     failures = [name for name, success in zip(task_names, results) if not success]
     if failures:
-        m = 'Please check logs above as command failed in some subprojects which could have been left in conflict state: '
-        m += ', '.join(failures)
+        m = (
+            'Please check logs above as command failed in some subprojects which could have been left in conflict state: '
+            + ', '.join(failures)
+        )
         mlog.warning(m)
     return len(failures)

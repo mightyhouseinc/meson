@@ -194,7 +194,7 @@ class OptionInterpreter:
             raise OptionException('Option names can only contain letters, numbers or dashes.')
         key = mesonlib.OptionKey.from_string(opt_name).evolve(subproject=self.subproject)
         if not key.is_project():
-            raise OptionException('Option name %s is reserved.' % opt_name)
+            raise OptionException(f'Option name {opt_name} is reserved.')
 
         opt_type = kwargs['type']
         parser = self.option_types[opt_type]

@@ -278,11 +278,10 @@ def _create_project(package: Package, build: builder.Builder, env: Environment) 
     :param meson_version: The generating meson version
     :return: a FunctionNode
     """
-    args: T.List[mparser.BaseNode] = []
-    args.extend([
+    args: T.List[mparser.BaseNode] = [
         build.string(package.name),
         build.string('rust'),
-    ])
+    ]
     kwargs: T.Dict[str, mparser.BaseNode] = {
         'version': build.string(package.version),
         # Always assume that the generated meson is using the latest features

@@ -97,7 +97,7 @@ def guess_backend(backend_str: str, msbuild_exe: str) -> T.Tuple['Backend', T.Li
 
     # Set backend arguments for Meson
     if backend_str.startswith('vs'):
-        backend_flags = ['--backend=' + backend_str]
+        backend_flags = [f'--backend={backend_str}']
         backend = Backend.vs
     elif backend_str == 'xcode':
         backend_flags = ['--backend=xcode']
@@ -129,10 +129,9 @@ def _using_intelcl() -> bool:
     # but because they're in Intel shell, the exe's below are on PATH
     if shutil.which('icl') or shutil.which('ifort'):
         return True
-    mlog.warning('It appears you might be intending to use Intel compiler on Windows '
-                 'since non-empty environment variable MKLROOT is set to {} '
-                 'However, Meson cannot find the Intel WIndows compiler executables (icl,ifort).'
-                 'Please try using the Intel shell.'.format(os.environ.get('MKLROOT')))
+    mlog.warning(
+        f"It appears you might be intending to use Intel compiler on Windows since non-empty environment variable MKLROOT is set to {os.environ.get('MKLROOT')} However, Meson cannot find the Intel WIndows compiler executables (icl,ifort).Please try using the Intel shell."
+    )
     return False
 
 
@@ -182,10 +181,7 @@ if 'MESON_EXE' in os.environ:
 else:
     meson_exe = None
 
-if mesonlib.is_windows() or mesonlib.is_cygwin():
-    exe_suffix = '.exe'
-else:
-    exe_suffix = ''
+exe_suffix = '.exe' if mesonlib.is_windows() or mesonlib.is_cygwin() else ''
 
 def handle_meson_skip_test(out: str) -> T.Tuple[bool, str]:
     for line in out.splitlines():
@@ -213,8 +209,7 @@ def get_meson_script() -> str:
     # Then if mesonbuild is in PYTHONPATH, meson must be in PATH
     mlog.warning('Could not find meson.py next to the mesonbuild module. '
                  'Trying system meson...')
-    meson_cmd = shutil.which('meson')
-    if meson_cmd:
+    if meson_cmd := shutil.which('meson'):
         return meson_cmd
     raise RuntimeError(f'Could not find {meson_script!r} or a meson in PATH')
 
@@ -243,9 +238,7 @@ def find_vcxproj_with_target(builddir, target):
     raise RuntimeError(f'No vcxproj matching {p!r} in {builddir!r}')
 
 def get_builddir_target_args(backend: Backend, builddir, target):
-    dir_args = []
-    if not target:
-        dir_args = get_backend_args_for_dir(backend, builddir)
+    dir_args = get_backend_args_for_dir(backend, builddir) if not target else []
     if target is None:
         return dir_args
     if backend is Backend.vs:
@@ -319,15 +312,14 @@ def run_configure_inprocess(commandlist: T.List[str], env: T.Optional[T.Dict[str
     stderr = StringIO()
     stdout = StringIO()
     returncode = 0
-    with mock.patch.dict(os.environ, env or {}), mock.patch.object(sys, 'stdout', stdout), mock.patch.object(sys, 'stderr', stderr):
+    with (mock.patch.dict(os.environ, env or {}), mock.patch.object(sys, 'stdout', stdout), mock.patch.object(sys, 'stderr', stderr)):
         try:
             returncode = mesonmain.run(commandlist, get_meson_script())
         except Exception:
-            if catch_exception:
-                returncode = 1
-                traceback.print_exc()
-            else:
+            if not catch_exception:
                 raise
+            returncode = 1
+            traceback.print_exc()
         finally:
             clear_meson_configure_class_caches()
     return returncode, stdout.getvalue(), stderr.getvalue()
@@ -416,7 +408,7 @@ def main():
         for cf in options.cross:
             print(mlog.bold(f'Running {cf} cross tests.'))
             print(flush=True)
-            cmd = cross_test_args + ['cross/' + cf]
+            cmd = cross_test_args + [f'cross/{cf}']
             if options.failfast:
                 cmd += ['--failfast']
             if options.cross_only:

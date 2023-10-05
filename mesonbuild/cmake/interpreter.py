@@ -124,7 +124,7 @@ _cmake_name_regex = re.compile(r'[^_a-zA-Z0-9]')
 def _sanitize_cmake_name(name: str) -> str:
     name = _cmake_name_regex.sub('_', name)
     if name in FORBIDDEN_TARGET_NAMES or name.startswith('meson'):
-        name = 'cm_' + name
+        name = f'cm_{name}'
     return name
 
 class OutputTargetMap:
@@ -149,10 +149,7 @@ class OutputTargetMap:
         assign_keys(keys)
 
     def _return_first_valid_key(self, keys: T.List[str]) -> T.Optional[T.Union['ConverterTarget', 'ConverterCustomTarget']]:
-        for i in keys:
-            if i and i in self.tgt_map:
-                return self.tgt_map[i]
-        return None
+        return next((self.tgt_map[i] for i in keys if i and i in self.tgt_map), None)
 
     def target(self, name: str) -> T.Optional[T.Union['ConverterTarget', 'ConverterCustomTarget']]:
         return self._return_first_valid_key([self._target_key(name)])
@@ -161,15 +158,13 @@ class OutputTargetMap:
         tgt = self.target(name)
         if tgt is None or not isinstance(tgt, ConverterTarget):
             return None
-        if tgt.meson_func() != 'executable':
-            return None
-        return tgt
+        return None if tgt.meson_func() != 'executable' else tgt
 
     def artifact(self, name: str) -> T.Optional[T.Union['ConverterTarget', 'ConverterCustomTarget']]:
         keys = []
         candidates = [name, OutputTargetMap.rm_so_version.sub('', name)]
         for i in lib_suffixes:
-            if not name.endswith('.' + i):
+            if not name.endswith(f'.{i}'):
                 continue
             new_name = name[:-len(i) - 1]
             new_name = OutputTargetMap.rm_so_version.sub('', new_name)
@@ -220,15 +215,12 @@ class ConverterTarget:
         self.full_name = target.full_name
         self.type = target.type
         self.install = target.install
-        self.install_dir: T.Optional[Path] = None
         self.link_libraries = target.link_libraries
         self.link_flags = target.link_flags + target.link_lang_flags
         self.depends_raw: T.List[str] = []
         self.depends: T.List[T.Union[ConverterTarget, ConverterCustomTarget]] = []
 
-        if target.install_paths:
-            self.install_dir = target.install_paths[0]
-
+        self.install_dir = target.install_paths[0] if target.install_paths else None
         self.languages: T.Set[str] = set()
         self.sources: T.List[Path] = []
         self.generated: T.List[Path] = []
@@ -251,14 +243,7 @@ class ConverterTarget:
 
         for i in target.files:
             languages: T.Set[str] = set()
-            src_suffixes: T.Set[str] = set()
-
-            # Insert suffixes
-            for j in i.sources:
-                if not j.suffix:
-                    continue
-                src_suffixes.add(j.suffix[1:])
-
+            src_suffixes: T.Set[str] = {j.suffix[1:] for j in i.sources if j.suffix}
             # Determine the meson language(s)
             # Extract the default language from the explicit CMake field
             lang_cmake_to_meson = {val.lower(): key for key, val in language_map.items()}

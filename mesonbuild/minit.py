@@ -105,10 +105,11 @@ def autodetect_options(options: Arguments, sample: bool = False) -> None:
         # The rest of the autodetection is not applicable to generating sample projects.
         return
     if not options.srcfiles:
-        srcfiles: T.List[Path] = []
-        for f in (f for f in Path().iterdir() if f.is_file()):
-            if f.suffix in LANG_SUFFIXES:
-                srcfiles.append(f)
+        srcfiles: T.List[Path] = [
+            f
+            for f in (f for f in Path().iterdir() if f.is_file())
+            if f.suffix in LANG_SUFFIXES
+        ]
         if not srcfiles:
             raise SystemExit('No recognizable source files found.\n'
                              'Run meson init in an empty directory to create a sample project.')
@@ -151,7 +152,7 @@ def autodetect_options(options: Arguments, sample: bool = False) -> None:
                 break
         if not options.language:
             raise SystemExit("Can't autodetect language, please specify it with -l.")
-        print("Detected language: " + options.language)
+        print(f"Detected language: {options.language}")
 
 def add_arguments(parser: 'argparse.ArgumentParser') -> None:
     '''
@@ -202,8 +203,7 @@ def run(options: Arguments) -> int:
 
         b = build.load(options.builddir)
         need_vsenv = T.cast('bool', b.environment.coredata.get_option(mesonlib.OptionKey('vsenv')))
-        vsenv_active = mesonlib.setup_vsenv(need_vsenv)
-        if vsenv_active:
+        if vsenv_active := mesonlib.setup_vsenv(need_vsenv):
             mlog.log(mlog.green('INFO:'), 'automatically activated MSVC compiler environment')
 
         cmd = detect_ninja() + ['-C', options.builddir]

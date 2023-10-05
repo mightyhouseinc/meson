@@ -62,13 +62,13 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def create_hash(fname: str) -> None:
-    hashname = fname + '.sha256sum'
+    hashname = f'{fname}.sha256sum'
     m = hashlib.sha256()
     m.update(open(fname, 'rb').read())
     with open(hashname, 'w', encoding='utf-8') as f:
         # A space and an asterisk because that is the format defined by GNU coreutils
         # and accepted by busybox and the Perl shasum tool.
-        f.write('{} *{}\n'.format(m.hexdigest(), os.path.basename(fname)))
+        f.write(f'{m.hexdigest()} *{os.path.basename(fname)}\n')
 
 
 msg_uncommitted_changes = 'Repository has uncommitted changes that will not be included in the dist tarball'
@@ -110,10 +110,11 @@ class Dist(metaclass=abc.ABCMeta):
 
     def run_dist_scripts(self) -> None:
         assert os.path.isabs(self.distdir)
-        env = {}
-        env['MESON_DIST_ROOT'] = self.distdir
-        env['MESON_SOURCE_ROOT'] = self.src_root
-        env['MESON_BUILD_ROOT'] = self.bld_root
+        env = {
+            'MESON_DIST_ROOT': self.distdir,
+            'MESON_SOURCE_ROOT': self.src_root,
+            'MESON_BUILD_ROOT': self.bld_root,
+        }
         for d in self.dist_scripts:
             if d.subproject and d.subproject not in self.subprojects:
                 continue
@@ -171,7 +172,7 @@ class GitDist(Dist):
             self.copy_git(src_root, distdir)
         else:
             subdir = Path(src_root).relative_to(repo_root)
-            tmp_distdir = distdir + '-tmp'
+            tmp_distdir = f'{distdir}-tmp'
             if os.path.exists(tmp_distdir):
                 windows_proof_rmtree(tmp_distdir)
             os.makedirs(tmp_distdir)
@@ -233,10 +234,10 @@ class HgDist(Dist):
             mlog.warning('dist scripts are not supported in Mercurial projects')
 
         os.makedirs(self.dist_sub, exist_ok=True)
-        tarname = os.path.join(self.dist_sub, self.dist_name + '.tar')
-        xzname = tarname + '.xz'
-        gzname = tarname + '.gz'
-        zipname = os.path.join(self.dist_sub, self.dist_name + '.zip')
+        tarname = os.path.join(self.dist_sub, f'{self.dist_name}.tar')
+        xzname = f'{tarname}.xz'
+        gzname = f'{tarname}.gz'
+        zipname = os.path.join(self.dist_sub, f'{self.dist_name}.zip')
         # Note that -X interprets relative paths using the current working
         # directory, not the repository root, so this must be an absolute path:
         # https://bz.mercurial-scm.org/show_bug.cgi?id=6267
@@ -245,8 +246,20 @@ class HgDist(Dist):
         # be useful to link the tarball to the Mercurial revision for either
         # manual inspection or in case any code interprets it for a --version or
         # similar.
-        subprocess.check_call(['hg', 'archive', '-R', self.src_root, '-S', '-t', 'tar',
-                               '-X', self.src_root + '/.hg[a-z]*', tarname])
+        subprocess.check_call(
+            [
+                'hg',
+                'archive',
+                '-R',
+                self.src_root,
+                '-S',
+                '-t',
+                'tar',
+                '-X',
+                f'{self.src_root}/.hg[a-z]*',
+                tarname,
+            ]
+        )
         output_names = []
         if 'xztar' in archives:
             import lzma
@@ -342,7 +355,7 @@ def run(options: argparse.Namespace) -> int:
     bld_root = b.environment.build_dir
     priv_dir = os.path.join(bld_root, 'meson-private')
 
-    dist_name = b.project_name + '-' + b.project_version
+    dist_name = f'{b.project_name}-{b.project_version}'
 
     archives = determine_archives_to_generate(options)
 
